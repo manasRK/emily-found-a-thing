@@ -2,20 +2,26 @@ import EmilyTreeNode
 import urllib2
 import feedparser
 import re
-from google.appengine.ext import db
+from google.appengine.ext import ndb
 
-class EmilyBlogModel(db.Model):
+SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
+
+class EmilyBlogModelAppEngineWrapper(ndb.model):
+    """Wrapper class for storing EmilyBlogModel inside AppEngine Datastore"""
+    url=ndb.StringProperty()
+    blog=ndb.PickleProperty()
+
+class EmilyBlogModel(object):
     """Model of the semantic structure of a blog"""
-    url=db.StringProperty()
     
     def __init__(self,url):
         """Sets up a model of the blog at url"""
-        super(EmilyBlogModel,self).__init__()
         self.words={}
         self.sentences=[]
         self.Tree=None
         self.H=0
-        
+        self.Links={}
+        self.url=url
 
     def Similarity(self,other):
         """Similarity metric for two blogs. An entropy-weighted variation
