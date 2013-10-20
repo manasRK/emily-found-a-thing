@@ -20,8 +20,10 @@ class EmilyBlogModel(object):
         self.sentences=[]
         self.Tree=None
         self.H=0
+        self.N=0
         self.Links={}
         self.url=url
+        req=urllib2
 
     def Similarity(self,other):
         """Similarity metric for two blogs. An entropy-weighted variation
@@ -35,8 +37,10 @@ class EmilyBlogModel(object):
                 result+=self[word].Similarity(other[word])
         return result/(self.H+other.H)
 
+    def 
+
     def GrowTree(self):
-        """Creates a tree structure representing the semantic relatinships
+        """Creates a tree structure representing the semantic relationships
            between the words in the blog"""
         Similarities=[]
         for word in self.words:

@@ -16,6 +16,14 @@ class EmilyTreeNode(object):
         self.Denom=math.log((N+1),2)
         self.N=N
 
+    def Update(self,NewSentences,deltaN):
+        """Adds data about the occurrence of the word represented by the node
+           in a new set of sentences"""
+        self.N+=deltaN
+        self.Denom=math.log((N+1),2)
+        self.sentences=set((n+deltaN for n in self.sentences))
+        self.sentences|=(NewSentences)
+
     def Entropy(self,other):
         """ H=log2(P(AB)/(P(A)P(B))
             where P(A) is the probability that a word from self.words occurs
