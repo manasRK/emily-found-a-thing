@@ -21,7 +21,6 @@ class EmilyBlogModel(object):
         self.Tree=None
         self.H=0
         self.N=0
-        self.Links={}
         self.url=url
         req=urllib2
 
@@ -37,7 +36,25 @@ class EmilyBlogModel(object):
                 result+=self[word].Similarity(other[word])
         return result/(self.H+other.H)
 
-    def 
+    def UpdateTree(self,Sentences):
+        """Updates the tree structure with new Sentences"""
+        deltaN=len(Sentences)
+        self.N+=deltaN
+        KnownWords=set()
+        for sentence in sentences:
+            for word in sentence:
+                if word not in KnownWords:
+                    known=word in self.words
+                    FoundAt=set((i for (i,s) in enumerate(Sentences)
+                                                             if word in s))
+                    self.words.setdefault(word,
+                                          EmilyTreeNode(set([word]),
+                                                        FoundAt,
+                                                        self.N))
+                    if known:
+                        self.words[word].Update(FoundAt,deltaN)
+                    KnownWords.add(word)
+        self.GrowTree()
 
     def GrowTree(self):
         """Creates a tree structure representing the semantic relationships
