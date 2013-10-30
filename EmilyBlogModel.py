@@ -1,10 +1,15 @@
 import EmilyTreeNode
 import urllib2
 import feedparser
+import HTMLParser
 import re
 from google.appengine.ext import ndb
 
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
+StripXML=re.compile(u'<[^>]*>')
+SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
+
+parser=HTMLParser.HTMLParser()
 
 class EmilyBlogModelAppEngineWrapper(ndb.model):
     """Wrapper class for storing EmilyBlogModel inside AppEngine Datastore"""
@@ -22,7 +27,7 @@ class EmilyBlogModel(object):
         self.H=0
         self.N=0
         self.url=url
-        req=urllib2
+        req=urllib2.Request(self.url)
 
     def Similarity(self,other):
         """Similarity metric for two blogs. An entropy-weighted variation
@@ -35,6 +40,14 @@ class EmilyBlogModel(object):
             if word in other.Tree:
                 result+=self[word].Similarity(other[word])
         return result/(self.H+other.H)
+
+    def Update(self,feed):
+        """Takes data from a feedparser feed and adds it to the model"""
+        rawdata=u'\n'.join((u'\n'.join((x.value for x in entry.content))
+                            for entry in feed.entries))
+        Sentences=[set(SplitWords.split(sentence))
+                   for sentence in SentenceEnd.split(StripXML.sub('',parser.unescape(rawdata)))]
+        self.UpdateTree(Sentences)
 
     def UpdateTree(self,Sentences):
         """Updates the tree structure with new Sentences"""
