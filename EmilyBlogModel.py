@@ -1,4 +1,5 @@
 import EmilyTreeNode
+import urllib
 import urllib2
 import feedparser
 import HTMLParser
@@ -9,7 +10,41 @@ SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
 StripXML=re.compile(u'<[^>]*>')
 SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
 
-parser=HTMLParser.HTMLParser()
+
+class EmilyHTMLParser(HTMLParser.HTMLParser):
+    """Class to extract <title> and <link rel="alternate"> from blog"""
+    def __init__(self):
+        """Two custom variables to contain title and FeedURL"""
+        super(EmilyHTMLParser,self).__init__()
+        self.title=''
+        self.FeedURL=None
+        self.InTitle=False
+
+    def handle_starttag(self,tag,attrs):
+        """Detects the <title> tag"""
+        if tag=='title':
+            self.InTitle=True
+
+    def handle_endtag(self,tag):
+        """Detects the </title> tag"""
+        if tag=='title':
+            self.InTitle=False
+
+    def handle_data(self,data):
+        """Extracts the blog title"""
+        if self.InTitle:
+            self.title+=data
+
+    def handle_startendtag(self,tag,attrs):
+        """Finds the feed url"""
+        if tag=='link':
+            AttrDict=dict(attrs)
+            if AttrDict['rel']=='alternate':
+                if self.FeedURL==None or AttrDict['type']=="application/atom+xml":
+                    self.FeedURL=AttrDict['href']
+            
+
+parser=EmilyHTMLParser()
 
 class EmilyBlogModelAppEngineWrapper(ndb.model):
     """Wrapper class for storing EmilyBlogModel inside AppEngine Datastore"""
@@ -27,7 +62,27 @@ class EmilyBlogModel(object):
         self.H=0
         self.N=0
         self.url=url
-        req=urllib2.Request(self.url)
+        for line in urllib2.urlopen(url):
+            parser.feed(line)
+        self.title=parser.title
+        Feed=feedparser.parse(urllib2.urlopen(parser.FeedURL))
+        self.Update(Feed)
+        hub=None
+        topic=parser.FeedURL
+        for link in Feed.links:
+            if link.rel=='hub':
+                hub=link.href
+            if link.rel=='self':
+                topic=link.href
+        if hub==None and url.find('tumblr')!=-1:
+            hub='http://tumblr.superfeedr.com'
+        req=urllib2.Request(hub,urllib.urlencode({'hub.callback':"http://emily.appspot.com/update",
+                                                  'hub.mode':'subscribe',
+                                                  'hub.topic':topic}))
+        urllib2.urlopen(req)
+        
+        
+        
 
     def Similarity(self,other):
         """Similarity metric for two blogs. An entropy-weighted variation
