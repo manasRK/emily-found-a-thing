@@ -4,6 +4,7 @@ import urllib2
 import feedparser
 import HTMLParser
 import re
+import collections
 from google.appengine.ext import ndb
 
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
@@ -46,10 +47,20 @@ class EmilyHTMLParser(HTMLParser.HTMLParser):
 
 parser=EmilyHTMLParser()
 
-class EmilyBlogModelAppEngineWrapper(ndb.model):
+class EmilyBlogModelAppEngineWrapper(ndb.Model):
     """Wrapper class for storing EmilyBlogModel inside AppEngine Datastore"""
     url=ndb.StringProperty()
     blog=ndb.PickleProperty()
+
+class EmilyRecommendation(ndb.Model):
+    """Class for storing recommended feed entries"""
+    permalink=ndb.StringProperty()
+    date=ndb.DateTimeProperty()
+    title=ndb.StringProperty()
+    blogtitle=ndb.StringProperty()
+    summary=ndb.TextProperty()
+
+    
 
 class EmilyBlogModel(object):
     """Model of the semantic structure of a blog"""
@@ -57,7 +68,7 @@ class EmilyBlogModel(object):
     def __init__(self,url):
         """Sets up a model of the blog at url"""
         self.words={}
-        self.sentences=[]
+        self.recommendations=collections.deque()
         self.Tree=None
         self.H=0
         self.N=0
@@ -170,8 +181,19 @@ class EmilyBlogModel(object):
                 Node2=self.Tree[word2]
                 result['links'].append({'source':i,
                                         'target':j,
-                                        'strength':self.Tree.LinkEntropy(word1,word2))
+                                        'strength':self.Tree.LinkEntropy(word1,word2)})
         return result
+
+    def Search(self,words):
+        """Returns the entropy associated with the deepest node in the tree that
+           contains all words"""
+        return self.Tree.search(words)
+        
+
+    def Recommend(self,permalink):
+        """Add a recommendation for this blog"""
+        self.recommendations.appendleft(permalink)
+                                       
 
     
                            

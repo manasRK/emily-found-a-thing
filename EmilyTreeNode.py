@@ -72,6 +72,14 @@ class EmilyTreeNode(object):
             result=self.Right.LinkEntropy(word1,word2)
         return result
 
+    def Search(self,words):
+        """The entropy of the deepest node in the tree that contains all words.
+           Used for search"""
+        result=0
+        if words<=self.words:
+            result=max((self.H,self.Left.Search(words),self.Right.Search(words)))
+        return result
+
     def __add__(self,other):
         """Combines two tree nodes to give a third representing the union of the
            sets of words represented by the two nodes.
