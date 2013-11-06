@@ -64,11 +64,23 @@ class Emily(object):
         """Handles subscriptions"""
         url=ParseQueryString(environ['QUERY_STRING'])['url']
         Status='200 OK'
-        mimetype='text/json'
         result=[]
         if EmilyBlogModel.EmilyBlogModelAppEngineWrapper.query(EmilyBlogModel.EmilyBlogModelAppEngineWrapper.url==url).count()==0:
             try:
                 self.pending[url]=EmilyBlogModel.EmilyBlogModelAppEngineWrapper(url=url,blog=EmilyBlogModel.EmilyBlogModel(url))
             except Exception as Error:
                 status='500 Internal Server Error'
+    result=["""<h2>Error registering blog</h2>""", """<p>Unfortunately Emily was not able to register your blog. This could be because""",
+"""<ul><li>You mistyped the URL, and Emily couldn't find it</li>""",
+"""<li>The blog doesn't publish an atom or rss feed</li>""",
+"""<li>The blog's host doesn't support <a href="pubsubhubbub">pubsubhubbub</a></li></ul>""",
+"""Sorry.</p>"""]
+    environ['wsgi.errors'].write(Error)
+else:
+    result=["""<h2>Welcome to Emily</h2>""","""<p>Congratulations! Your blog is now registered with Emily! Use the following URLs to see what Emily can find for you.""",
+"""<table>"""]
+    result.extend(["""<tr><th>{name}</th><td><a href="{url}">{url}</a></td></tr>""".format({'name':name,'url':'http://emily.appspot.com/{service}?url={url}'.format({'service':name.lower(),'url':urllib.quote_plus(url)})})
+for name in ['Recommend','Visualise','Cluster']])
+
+
         
