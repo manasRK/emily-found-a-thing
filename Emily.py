@@ -69,18 +69,35 @@ class Emily(object):
             try:
                 self.pending[url]=EmilyBlogModel.EmilyBlogModelAppEngineWrapper(url=url,blog=EmilyBlogModel.EmilyBlogModel(url))
             except Exception as Error:
-                status='500 Internal Server Error'
-    result=["""<h2>Error registering blog</h2>""", """<p>Unfortunately Emily was not able to register your blog. This could be because""",
-"""<ul><li>You mistyped the URL, and Emily couldn't find it</li>""",
-"""<li>The blog doesn't publish an atom or rss feed</li>""",
-"""<li>The blog's host doesn't support <a href="pubsubhubbub">pubsubhubbub</a></li></ul>""",
-"""Sorry.</p>"""]
-    environ['wsgi.errors'].write(Error)
-else:
-    result=["""<h2>Welcome to Emily</h2>""","""<p>Congratulations! Your blog is now registered with Emily! Use the following URLs to see what Emily can find for you.""",
-"""<table>"""]
-    result.extend(["""<tr><th>{name}</th><td><a href="{url}">{url}</a></td></tr>""".format({'name':name,'url':'http://emily.appspot.com/{service}?url={url}'.format({'service':name.lower(),'url':urllib.quote_plus(url)})})
-for name in ['Recommend','Visualise','Cluster']])
+                Status='500 Internal Server Error'
+                result=["""<h2>Error registering blog</h2>""",
+                        """<p>Unfortunately Emily was not able to register your blog. This could be because""",
+                        """<ul><li>You mistyped the URL, and Emily couldn't find it</li>""",
+                        """<li>The blog doesn't publish an atom or rss feed</li>""",
+                        """<li>The blog's host doesn't support <a href="http://code.google.com/p/pubsubhubbub">pubsubhubbub</a></li></ul>""",
+                        """Sorry.</p>"""]
+                environ['wsgi.errors'].write(Error)
+            else:
+                result=["""<h2>Welcome to Emily</h2>""",
+                        """<p>Congratulations! Your blog is now registered with Emily! Use the following URLs to see what Emily can find for you.""",
+                        """<table>"""]
+                result.extend(["""<tr><th>{name}</th><td><a href="{url}">{url}</a></td></tr>""".format({'name':name,
+                                                                                                        'url':'http://emily.appspot.com/{service}?url={url}'.format({'service':name.lower(),
+                                                                                                                                                                     'url':urllib.quote_plus(url)})})
+                               for name in ['Recommend','Visualise','Cluster']])
+                result.append('</table></p>')
+        else:
+            result=["""<h2>Blog already registered</h2>""",
+                    """<p>It looks like the blog at {url} is already registered with Emily</p>""".format(url=url)]
+        headers=[('Content-type','text/html'),
+                 ('Content-length',str(sum((len(line) for line in table))))]
+        return Status,headers,result
 
+    def Update(self,environ):
+        """Handles requests from the pubsubhubbub server. These may be
+           verification requests (GET) or updates (POST)"""
+        Status='200 OK'
+        if environ['REQUEST_METHOD']=='POST':
+            
 
         
