@@ -20,7 +20,7 @@ class EmilyTreeNode(object):
         """Adds data about the occurrence of the word represented by the node
            in a new set of sentences"""
         self.N+=deltaN
-        self.Denom=math.log((N+1),2)
+        self.Denom=math.log((self.N+1),2)
         self.sentences=set((n+deltaN for n in self.sentences))
         self.sentences|=(NewSentences)
 

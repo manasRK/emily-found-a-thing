@@ -11,6 +11,8 @@ SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
 StripXML=re.compile(u'<[^>]*>')
 SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
 
+def ParseLinkHeader(header):
+    """Extracts links and relationships from a html link header"""
 
 class EmilyHTMLParser(HTMLParser.HTMLParser):
     """Class to extract <title> and <link rel="alternate"> from blog"""
