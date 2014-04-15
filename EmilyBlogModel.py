@@ -152,7 +152,7 @@ class EmilyBlogModel(object):
                     Similarities[i]['score']=Sim
             Similarities.append(node)
         while len(Similarities)>1:
-            Similarities.sort(lambda x:-x['score'])
+            Similarities.sort(lambda x:x['score'])
             a=Similarities.pop()
             b=Similarities.pop()
             node={'node':a['node']+b['node'],
