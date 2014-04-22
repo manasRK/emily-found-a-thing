@@ -1,4 +1,5 @@
 import EmilyBlogModel
+import feedparser
 from google.appengine.ext import ndb
 
 def ParseQueryString(query):
@@ -97,7 +98,19 @@ class Emily(object):
         """Handles requests from the pubsubhubbub server. These may be
            verification requests (GET) or updates (POST)"""
         Status='200 OK'
+        
         if environ['REQUEST_METHOD']=='POST':
+            try:
+                url=EmilyBlogModel.ParseLinkHeader(environ['HTTP_LINK'])['self']
+                BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+                BlogModel.blog.update(feedparser.parse(environ['wsgi.input']))
+            except Exception as Error:
+                Status='500 Internal Server Error'
+        else:
+            try:
+                args=ParseQueryString(environ['QUERY_STRING'])
+                url=args['hub.topic']
+                BlogModel=self.pending[url]
             
 
         
