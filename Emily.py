@@ -91,19 +91,20 @@ class Emily(object):
             result=["""<h2>Blog already registered</h2>""",
                     """<p>It looks like the blog at {url} is already registered with Emily</p>""".format(url=url)]
         headers=[('Content-type','text/html'),
-                 ('Content-length',str(sum((len(line) for line in table))))]
+                 ('Content-length',str(sum((len(line) for line in result))))]
         return Status,headers,result
 
     def Update(self,environ):
         """Handles requests from the pubsubhubbub server. These may be
            verification requests (GET) or updates (POST)"""
         Status='200 OK'
-        
+        result=[]
         if environ['REQUEST_METHOD']=='POST':
             try:
                 url=EmilyBlogModel.ParseLinkHeader(environ['HTTP_LINK'])['self']
                 BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
                 BlogModel.blog.update(feedparser.parse(environ['wsgi.input']))
+                BlogModel.put()
             except Exception as Error:
                 Status='500 Internal Server Error'
         else:
@@ -111,6 +112,28 @@ class Emily(object):
                 args=ParseQueryString(environ['QUERY_STRING'])
                 url=args['hub.topic']
                 BlogModel=self.pending[url]
+                BlogModel.put()
+                del self.pending[url]
+                result=[args['hub.challenge']]
+            except KeyError:
+                Status='404 Not found'
+            except:
+                Status='500 Internal Server Error'
+        headers=[('Content-type','text/plain'),
+                 ('Content-length',str(sum((len(line) for line in result))))]
+        return Status,headers,result
+
+    def Visualise(self,environ):
+        """HTML for blog visualisation page"""
+
+    def WordCloud(self,environ):
+        """JSON for blog visualisation"""
+
+    def Cluster(self,environ):
+        """HTML for blog clustering page"""
+
+    def BlogCluster(self,environ):
+        """JSON for blog clustering page"""
             
 
         
