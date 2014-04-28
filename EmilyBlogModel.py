@@ -10,9 +10,12 @@ from google.appengine.ext import ndb
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
 StripXML=re.compile(u'<[^>]*>')
 SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
+RelFinder=re.compile(u'(?<=rel=").*?(?=")')
+LinkFinder=re.compile(u'(?<=<).*?(?=>)')
 
 def ParseLinkHeader(header):
     """Extracts links and relationships from a html link header"""
+    return dict(zip(RelFinder.findall(header),LinkFinder.findall(header)))
 
 class EmilyHTMLParser(HTMLParser.HTMLParser):
     """Class to extract <title> and <link rel="alternate"> from blog"""
@@ -87,8 +90,6 @@ class EmilyBlogModel(object):
                 hub=link.href
             if link.rel=='self':
                 topic=link.href
-        if hub==None and url.find('tumblr')!=-1:
-            hub='http://tumblr.superfeedr.com'
         req=urllib2.Request(hub,urllib.urlencode({'hub.callback':"http://emily.appspot.com/update",
                                                   'hub.mode':'subscribe',
                                                   'hub.topic':topic}))

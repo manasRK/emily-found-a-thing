@@ -125,7 +125,15 @@ class Emily(object):
 
     def Visualise(self,environ):
         """HTML for blog visualisation page"""
-
+        Status='200 OK'
+        result=[]
+        try:
+            url=ParseQueryString(environ['QUERY_STRING'])
+            BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+            result=['<html>',
+                    '<head>',
+                    "<title>Emily's word could for {title></title>".format(title=BlogModel.blog.title
+            
     def WordCloud(self,environ):
         """JSON for blog visualisation"""
 
