@@ -130,9 +130,24 @@ class Emily(object):
         try:
             url=ParseQueryString(environ['QUERY_STRING'])
             BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
-            result=['<html>',
-                    '<head>',
-                    "<title>Emily's word could for {title></title>".format(title=BlogModel.blog.title
+            title=BlogModel.blog.title
+            result=['<html>'
+                    '<head>'
+                    "<title>Emily's word cloud for {title}</title>"
+                    '<script type="application/javascript" src="/js/d3.js" />'
+                    '<script type="application/javascript>',
+                    'blogurl="{url}"'
+                    '</script>'
+                    '<script type="application/javascript" src="/js/wordcloud.js" />'
+                    '</head>'
+                    '<body>'
+                    """<h1>Emily's word cloud for <a href="{url}">{title}</a></h1>"""
+                    '<div class="graph"></div>'
+                    '<div class="clusterlink"><a href="/cluster?url={url}">Similar blogs</a></div>'
+                    '<div class="datalink"><a href="wordcloud?url={url}">JSON data for this wordcloud</a></div>'
+                    '</body>'
+                    '</html>'.format(title=title,url=url)]
+            
             
     def WordCloud(self,environ):
         """JSON for blog visualisation"""
