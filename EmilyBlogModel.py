@@ -6,12 +6,14 @@ import HTMLParser
 import re
 import collections
 from google.appengine.ext import ndb
+import multiprocessing
 
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
 StripXML=re.compile(u'<[^>]*>')
 SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
 RelFinder=re.compile(u'(?<=rel=").*?(?=")')
 LinkFinder=re.compile(u'(?<=<).*?(?=>)')
+THRESHOLD=0.5
 
 def ParseLinkHeader(header):
     """Extracts links and relationships from a html link header"""
@@ -55,6 +57,7 @@ parser=EmilyHTMLParser()
 class EmilyBlogModelAppEngineWrapper(ndb.Model):
     """Wrapper class for storing EmilyBlogModel inside AppEngine Datastore"""
     url=ndb.StringProperty()
+    topic=ndb.StringProperty()
     blog=ndb.PickleProperty()
 
 class EmilyRecommendation(ndb.Model):
@@ -65,6 +68,10 @@ class EmilyRecommendation(ndb.Model):
     blogtitle=ndb.StringProperty()
     summary=ndb.TextProperty()
 
+class EmilyLink(ndb.Model):
+    """Stores links between blogs for clustering and recommendation"""
+    blogs=ndb.StringProperty(repeated=True)
+    strength=ndb.FloatProperty()
     
 
 class EmilyBlogModel(object):
@@ -78,22 +85,27 @@ class EmilyBlogModel(object):
         self.H=0
         self.N=0
         self.url=url
+        self.best=0.0
         for line in urllib2.urlopen(url):
             parser.feed(line)
         self.title=parser.title
         Feed=feedparser.parse(urllib2.urlopen(parser.FeedURL))
         self.Update(Feed)
-        hub=None
-        topic=parser.FeedURL
+        self.hub=None
+        self.topic=parser.FeedURL
         for link in Feed.links:
             if link.rel=='hub':
-                hub=link.href
+                self.hub=link.href
             if link.rel=='self':
-                topic=link.href
-        req=urllib2.Request(hub,urllib.urlencode({'hub.callback':"http://emily.appspot.com/update",
-                                                  'hub.mode':'subscribe',
-                                                  'hub.topic':topic}))
+                self.topic=link.href
+
+    def subscribe(self):
+        """Sends a subscription request to the hub"""
+        req=urllib2.Request(self.hub,urllib.urlencode({'hub.callback':"http://emily.appspot.com/update",
+                                                       'hub.mode':'subscribe',
+                                                       'hub.topic':self.topic}))
         urllib2.urlopen(req)
+        
         
         
         
@@ -117,6 +129,9 @@ class EmilyBlogModel(object):
         Sentences=[set(SplitWords.split(sentence))
                    for sentence in SentenceEnd.split(StripXML.sub('',parser.unescape(rawdata)))]
         self.UpdateTree(Sentences)
+        link_update=multiprocessing.Process(self.UpdateLinks,feed)
+        link_update.start()
+        
 
     def UpdateTree(self,Sentences):
         """Updates the tree structure with new Sentences"""
@@ -137,6 +152,10 @@ class EmilyBlogModel(object):
                         self.words[word].Update(FoundAt,deltaN)
                     KnownWords.add(word)
         self.GrowTree()
+
+    def UpdateLinks(self,feed):
+        """Updates clustering and recommendation data"""
+        for blog in EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).fetch():
 
     def GrowTree(self):
         """Creates a tree structure representing the semantic relationships

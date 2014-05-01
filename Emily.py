@@ -10,10 +10,7 @@ def ParseQueryString(query):
         result[key]=value
     return result
 
-class EmilyLink(ndb.Model):
-    """Stores links between blogs for clustering and recommendation"""
-    blogs=ndb.StringProperty(repeated=True)
-    strength=ndb.FloatProperty()
+
 
 
 class Emily(object):
@@ -68,7 +65,11 @@ class Emily(object):
         result=[]
         if EmilyBlogModel.EmilyBlogModelAppEngineWrapper.query(EmilyBlogModel.EmilyBlogModelAppEngineWrapper.url==url).count()==0:
             try:
-                self.pending[url]=EmilyBlogModel.EmilyBlogModelAppEngineWrapper(url=url,blog=EmilyBlogModel.EmilyBlogModel(url))
+                model=EmilyBlogModel.EmilyBlogModelAppEngineWrapper(url=url,blog=EmilyBlogModel.EmilyBlogModel(url),topic=None)
+                topic=model.blog.topic
+                model.topic=topic
+                pending[topic]=model
+                model.blog.subscribe()
             except Exception as Error:
                 Status='500 Internal Server Error'
                 result=["""<h2>Error registering blog</h2>""",
@@ -101,8 +102,9 @@ class Emily(object):
         result=[]
         if environ['REQUEST_METHOD']=='POST':
             try:
-                url=EmilyBlogModel.ParseLinkHeader(environ['HTTP_LINK'])['self']
-                BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+                topic=EmilyBlogModel.ParseLinkHeader(environ['HTTP_LINK'])['self']
+                BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,topic).get()
+                FeedData=
                 BlogModel.blog.update(feedparser.parse(environ['wsgi.input']))
                 BlogModel.put()
             except Exception as Error:
@@ -147,10 +149,29 @@ class Emily(object):
                     '<div class="datalink"><a href="wordcloud?url={url}">JSON data for this wordcloud</a></div>'
                     '</body>'
                     '</html>'.format(title=title,url=url)]
+        except ndb.NotSavedError:
+            Status='404 Not Found'
+            result=['<html>'
+                    '<title>404 Not found</title>'
+                    '</head>'
+                    '<body>'
+                    'Emily could not find {url}. Sorry.'
+                    '</body>'
+                    '</html>'.format(url=url)]
+        headers=[('Content-type','text/html'),
+                 ('Content-length',str(sum((len(line) for line in result))))]
+        return Status,headers,result
             
             
     def WordCloud(self,environ):
         """JSON for blog visualisation"""
+        Status='200 OK'
+        args=ParseQueryString(environ['QUERY_STRING'])
+        url=args['url']
+        try:
+            BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+            data=BlogModel.blog.WordGraph()
+        
 
     def Cluster(self,environ):
         """HTML for blog clustering page"""
