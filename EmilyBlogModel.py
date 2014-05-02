@@ -155,7 +155,33 @@ class EmilyBlogModel(object):
 
     def UpdateLinks(self,feed):
         """Updates clustering and recommendation data"""
-        for blog in EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).fetch():
+        EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).map_async(self.UpdateFunction(feed))
+
+    def UpdateFunction(self,feed):
+        """Returns a callback to map for clustering and recommendations"""
+        feedlinks=[EmilyRecommendation(permalink=item.link,
+                                       date=item.published,
+                                       title=item.title,
+                                       blogtitle=feed.title,
+                                       summary=item.summary)
+                   for item in feed.entries]
+        for item in feedlinks:
+            item.put_async()
+        def Updater(blogmodel):
+            """Calculates similarity with other blog, and decides whether to link"""
+            x=self.Similarity(blogmodel.blog)
+            if x>self.best or x>other.blogmodel.best:
+                link=EmilyLink(blogs=[self.url,other.blogmodel.url],strength=x)
+                link.put()
+            if x>self.best:
+                self.best=x
+            if x>blogmodel.blog.best:
+                blogmodel.blog.best=x
+            if x>Threshold:
+                for item in feed:
+                    blogmodel.blog.Recommend(item.link)
+            blogmodel.put_async()
+        return Updater
 
     def GrowTree(self):
         """Creates a tree structure representing the semantic relationships
