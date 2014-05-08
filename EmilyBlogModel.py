@@ -6,7 +6,7 @@ import HTMLParser
 import re
 import collections
 from google.appengine.ext import ndb
-import multiprocessing
+
 
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
 StripXML=re.compile(u'<[^>]*>')
@@ -18,6 +18,17 @@ THRESHOLD=0.5
 def ParseLinkHeader(header):
     """Extracts links and relationships from a html link header"""
     return dict(zip(RelFinder.findall(header),LinkFinder.findall(header)))
+
+class PutCallback(object):
+    """Provides a callback to save results of a tasklet to the database"""
+    def __init__(self,model):
+    """Registers model to be saved"""
+        self.model=model
+        
+    @ndb.tasklet
+    def __call__(self):
+    """Saves the model"""
+        yield self.model.put_async()
 
 class EmilyHTMLParser(HTMLParser.HTMLParser):
     """Class to extract <title> and <link rel="alternate"> from blog"""
@@ -122,15 +133,17 @@ class EmilyBlogModel(object):
                 result+=self[word].Similarity(other[word])
         return result/(self.H+other.H)
 
-    def Update(self,feed):
+    @ndb.tasklet
+    def Update(self,feed,callback=None):
         """Takes data from a feedparser feed and adds it to the model"""
         rawdata=u'\n'.join((u'\n'.join((x.value for x in entry.content))
                             for entry in feed.entries))
         Sentences=[set(SplitWords.split(sentence))
                    for sentence in SentenceEnd.split(StripXML.sub('',parser.unescape(rawdata)))]
         self.UpdateTree(Sentences)
-        link_update=multiprocessing.Process(self.UpdateLinks,feed)
-        link_update.start()
+        self.UpdateLinks(feed)
+        if callback:
+            callback()
         
 
     def UpdateTree(self,Sentences):
@@ -152,7 +165,8 @@ class EmilyBlogModel(object):
                         self.words[word].Update(FoundAt,deltaN)
                     KnownWords.add(word)
         self.GrowTree()
-
+    
+    @ndb.tasklet
     def UpdateLinks(self,feed):
         """Updates clustering and recommendation data"""
         EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).map_async(self.UpdateFunction(feed))
@@ -167,6 +181,7 @@ class EmilyBlogModel(object):
                    for item in feed.entries]
         for item in feedlinks:
             item.put_async()
+        @ndb.tasklet
         def Updater(blogmodel):
             """Calculates similarity with other blog, and decides whether to link"""
             x=self.Similarity(blogmodel.blog)

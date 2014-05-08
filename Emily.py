@@ -104,9 +104,8 @@ class Emily(object):
             try:
                 topic=EmilyBlogModel.ParseLinkHeader(environ['HTTP_LINK'])['self']
                 BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,topic).get()
-                FeedData=
-                BlogModel.blog.update(feedparser.parse(environ['wsgi.input']))
-                BlogModel.put()
+                BlogModel.blog.update(feedparser.parse(environ['wsgi.input']),
+                	                     EmilyBlogModel.PutCallback(BlogModel))
             except Exception as Error:
                 Status='500 Internal Server Error'
         else:
@@ -168,10 +167,23 @@ class Emily(object):
         Status='200 OK'
         args=ParseQueryString(environ['QUERY_STRING'])
         url=args['url']
+        result=[]
+        headers=[]
         try:
             BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
-            data=BlogModel.blog.WordGraph()
-        
+            data=json.dumps(BlogModel.blog.WordGraph())
+            if 'callback' in args:
+                result=['{callback}({data})'.format(callback=args[callback],data=data)]
+                headers.append(('Content-type','application/javascript'))
+            else:
+                result=[data]
+                headers.append(('Content-type','application/json'))
+        except ndb.NotSavedError:
+            Status='404 Not found'
+            headers.append(('Content-type','application/json'))
+        length=sum((len(line) for line in result))
+        headers.append(('Content-length',str(length))
+        return Status,headers,result
 
     def Cluster(self,environ):
         """HTML for blog clustering page"""
