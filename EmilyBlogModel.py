@@ -83,6 +83,13 @@ class EmilyLink(ndb.Model):
     """Stores links between blogs for clustering and recommendation"""
     blogs=ndb.StringProperty(repeated=True)
     strength=ndb.FloatProperty()
+
+
+def GetClusters(url,known=set(),offset=0):
+    """Finds the blogs that cluster with this one"""
+    result={'nodes':[],
+            'links':[]}
+    
     
 
 class EmilyBlogModel(object):
@@ -170,6 +177,7 @@ class EmilyBlogModel(object):
     def UpdateLinks(self,feed):
         """Updates clustering and recommendation data"""
         EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).map_async(self.UpdateFunction(feed))
+        EmilyLink.query().map_async(PruneLinks)
 
     def UpdateFunction(self,feed):
         """Returns a callback to map for clustering and recommendations"""

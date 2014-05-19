@@ -187,9 +187,62 @@ class Emily(object):
 
     def Cluster(self,environ):
         """HTML for blog clustering page"""
+        Status='200 OK'
+        result=[]
+        try:
+            url=ParseQueryString(environ['QUERY_STRING'])
+            BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+            title=BlogModel.blog.title
+            result=['<html>'
+                    '<head>'
+                    "<title>Blogs similar to {title}</title>"
+                    '<script type="application/javascript" src="/js/d3.js" />'
+                    '<script type="application/javascript>',
+                    'blogurl="{url}"'
+                    '</script>'
+                    '<script type="application/javascript" src="/js/blogcluster.js" />'
+                    '</head>'
+                    '<body>'
+                    """<h1>Blogs similar to <a href="{url}">{title}</a></h1>"""
+                    '<div class="graph"></div>'
+                    '<div class="clusterlink"><a href="/visualise?url={url}">Similar blogs</a></div>'
+                    '<div class="datalink"><a href="blogcluster?url={url}">JSON data for this wordcloud</a></div>'
+                    '</body>'
+                    '</html>'.format(title=title,url=url)]
+        except ndb.NotSavedError:
+            Status='404 Not Found'
+            result=['<html>'
+                    '<title>404 Not found</title>'
+                    '</head>'
+                    '<body>'
+                    'Emily could not find {url}. Sorry.'
+                    '</body>'
+                    '</html>'.format(url=url)]
+        headers=[('Content-type','text/html'),
+                 ('Content-length',str(sum((len(line) for line in result))))]
+        return Status,headers,result
 
     def BlogCluster(self,environ):
         """JSON for blog clustering page"""
-            
+        Status='200 OK'
+        args=ParseQueryString(environ['QUERY_STRING'])
+        url=args['url']
+        result=[]
+        headers=[]
+        try:
+            BlogModel=ndb.Key(EmilyBlogModel.EmilyBlogModelAppEngineWrapper,url).get()
+            data=json.dumps(BlogModel.blog.WordGraph())
+            if 'callback' in args:
+                result=['{callback}({data})'.format(callback=args[callback],data=data)]
+                headers.append(('Content-type','application/javascript'))
+            else:
+                result=[data]
+                headers.append(('Content-type','application/json'))
+        except ndb.NotSavedError:
+            Status='404 Not found'
+            headers.append(('Content-type','application/json'))
+        length=sum((len(line) for line in result))
+        headers.append(('Content-length',str(length))
+        return Status,headers,result    
 
         
