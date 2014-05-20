@@ -13,7 +13,7 @@ StripXML=re.compile(u'<[^>]*>')
 SplitWords=re.compile(u"""[.?!,;:"]*\s+""")
 RelFinder=re.compile(u'(?<=rel=").*?(?=")')
 LinkFinder=re.compile(u'(?<=<).*?(?=>)')
-THRESHOLD=0.5
+
 
 def ParseLinkHeader(header):
     """Extracts links and relationships from a html link header"""
@@ -94,7 +94,7 @@ def GetClusters(url,known=set(),offset=0):
 
 class EmilyBlogModel(object):
     """Model of the semantic structure of a blog"""
-    
+    Threshold=1.0
     def __init__(self,url):
         """Sets up a model of the blog at url"""
         self.words={}
@@ -177,7 +177,7 @@ class EmilyBlogModel(object):
     def UpdateLinks(self,feed):
         """Updates clustering and recommendation data"""
         EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).map_async(self.UpdateFunction(feed))
-        EmilyLink.query().map_async(PruneLinks)
+        EmilyLink.query().map_async(EmilyBlogModdelPruneLinks)
 
     def UpdateFunction(self,feed):
         """Returns a callback to map for clustering and recommendations"""
@@ -189,21 +189,26 @@ class EmilyBlogModel(object):
                    for item in feed.entries]
         for item in feedlinks:
             item.put_async()
+        OldThreshold=EmilyBlogModel.Threshold
         @ndb.tasklet
         def Updater(blogmodel):
             """Calculates similarity with other blog, and decides whether to link"""
             x=self.Similarity(blogmodel.blog)
-            if x>self.best or x>other.blogmodel.best:
+            IsOldThreshold=blogmodel.blog.best==OldThreshold
+            if x>self.best or x>other.blogmodel.best or x>EmilyBlogModelThreshold:
                 link=EmilyLink(blogs=[self.url,other.blogmodel.url],strength=x)
                 link.put()
             if x>self.best:
                 self.best=x
             if x>blogmodel.blog.best:
                 blogmodel.blog.best=x
-            if x>Threshold:
+                if x<EmilyBlogModel.Threshold or IsOldThreshold:
+                    EmilyBlogModel.Threshold=x
+            if x>=EmilyBlogModel.Threshold:
                 for item in feed:
                     blogmodel.blog.Recommend(item.link)
             blogmodel.put_async()
+            if self.best<EmilyBlogModel.Threshold
         return Updater
 
     def GrowTree(self):
@@ -264,6 +269,12 @@ class EmilyBlogModel(object):
     def Recommend(self,permalink):
         """Add a recommendation for this blog"""
         self.recommendations.appendleft(permalink)
+
+    @ndb.tasklet
+    @classmethod
+    def PruneLinks(cls):
+        """Removes weak links"""
+        EmilyLink.query(EmilyLink.strength<EmilyBlogModel.Threshold).delete_async()
                                        
 
     
