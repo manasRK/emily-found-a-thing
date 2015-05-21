@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/usr/local/lib/python2.7/dist-packages')
+import math
 import EmilyTreeNode
 import urllib
 import urllib2
@@ -5,7 +8,9 @@ import feedparser
 import HTMLParser
 import re
 import collections
-from google.appengine.ext import ndb
+import svgwrite
+import codecs
+#from google.appengine.ext import ndb
 
 
 SentenceEnd=re.compile(u"""[.?!]['"]*\s+""")
@@ -22,15 +27,15 @@ def ParseLinkHeader(header):
 class PutCallback(object):
     """Provides a callback to save results of a tasklet to the database"""
     def __init__(self,model):
-    """Registers model to be saved"""
+        """Registers model to be saved"""
         self.model=model
         
     @ndb.tasklet
     def __call__(self):
-    """Saves the model"""
+        """Saves the model"""
         yield self.model.put_async()
 
-class EmilyHTMLParser(HTMLParser.HTMLParser):
+class EmilyHTMLParser(HTMLParser.HTMLParser,object):
     """Class to extract <title> and <link rel="alternate"> from blog"""
     def __init__(self):
         """Two custom variables to contain title and FeedURL"""
@@ -59,7 +64,7 @@ class EmilyHTMLParser(HTMLParser.HTMLParser):
         if tag=='link':
             AttrDict=dict(attrs)
             if AttrDict['rel']=='alternate':
-                if self.FeedURL==None or AttrDict['type']=="application/atom+xml":
+                if self.FeedURL==None or ('type' in AttrDict and AttrDict['type']=="application/atom+xml"):
                     self.FeedURL=AttrDict['href']
             
 
@@ -77,6 +82,7 @@ class EmilyRecommendation(ndb.Model):
     date=ndb.DateTimeProperty()
     title=ndb.StringProperty()
     blogtitle=ndb.StringProperty()
+    blogurl=ndb.StringProperty()
     summary=ndb.TextProperty()
 
 class EmilyLink(ndb.Model):
@@ -89,6 +95,15 @@ def GetClusters(url,known=set(),offset=0):
     """Finds the blogs that cluster with this one"""
     result={'nodes':[],
             'links':[]}
+
+def SetupLinks(blog):
+    """Sets up links between blog and the blogs already in the system"""
+    def Linker(OldBlog):
+        """OldBlog is an EmilyBlogModelAppEngineWrapper"""
+        link=EmilyLink(blogs=[OldBlog.url,blog.url],
+                       strength=OldBlog.blog.Similarity(blog))
+        yield link.put_async()
+    EmilyBlogModelAppEngineWrapper.query.map_async(Linker)
     
     
 
@@ -105,13 +120,13 @@ class EmilyBlogModel(object):
         self.url=url
         self.best=0.0
         for line in urllib2.urlopen(url):
-            parser.feed(line)
+            parser.feed(codecs.decode(line,'utf-8'))
         self.title=parser.title
-        Feed=feedparser.parse(urllib2.urlopen(parser.FeedURL))
-        self.Update(Feed)
+        #Feed=feedparser.parse(urllib2.urlopen(parser.FeedURL))
+        #self.Update(Feed)
         self.hub=None
         self.topic=parser.FeedURL
-        for link in Feed.links:
+        for link in Feed.feed.links:
             if link.rel=='hub':
                 self.hub=link.href
             if link.rel=='self':
@@ -119,7 +134,7 @@ class EmilyBlogModel(object):
 
     def subscribe(self):
         """Sends a subscription request to the hub"""
-        req=urllib2.Request(self.hub,urllib.urlencode({'hub.callback':"http://emily.appspot.com/update",
+        req=urllib2.Request(self.hub,urllib.urlencode({'hub.callback':"https://emily-found-a-thing.appspot.com/update",
                                                        'hub.mode':'subscribe',
                                                        'hub.topic':self.topic}))
         urllib2.urlopen(req)
@@ -140,9 +155,11 @@ class EmilyBlogModel(object):
                 result+=self[word].Similarity(other[word])
         return result/(self.H+other.H)
 
-    @ndb.tasklet
-    def Update(self,feed,callback=None):
+    #@ndb.tasklet
+    def Update(self,feed=None,callback=None):
         """Takes data from a feedparser feed and adds it to the model"""
+        if feed is None:
+            feed=feedparser.parse(urllib2.urlopen(self.topic))
         rawdata=u'\n'.join((u'\n'.join((x.value for x in entry.content))
                             for entry in feed.entries))
         Sentences=[set(SplitWords.split(sentence))
@@ -158,16 +175,16 @@ class EmilyBlogModel(object):
         deltaN=len(Sentences)
         self.N+=deltaN
         KnownWords=set()
-        for sentence in sentences:
+        for sentence in Sentences:
             for word in sentence:
-                if word not in KnownWords:
+                if word!=u'' and not word.isspace() and word not in KnownWords:
                     known=word in self.words
                     FoundAt=set((i for (i,s) in enumerate(Sentences)
                                                              if word in s))
                     self.words.setdefault(word,
-                                          EmilyTreeNode(set([word]),
-                                                        FoundAt,
-                                                        self.N))
+                                          EmilyTreeNode.EmilyTreeNode(set([word]),
+                                                                      FoundAt,
+                                                                      self.N))
                     if known:
                         self.words[word].Update(FoundAt,deltaN)
                     KnownWords.add(word)
@@ -176,8 +193,8 @@ class EmilyBlogModel(object):
     @ndb.tasklet
     def UpdateLinks(self,feed):
         """Updates clustering and recommendation data"""
-        EmilyBlogModelAppEngineWrapper.query(EmilyBlogModelAppEngineWrapper.url!=self.url).map_async(self.UpdateFunction(feed))
-        EmilyLink.query().map_async(EmilyBlogModdelPruneLinks)
+        EmilyLink.query(EmilyLink.url==self.url).map_async(self.UpdateFunction(feed))
+        #EmilyLink.query().map_async(EmilyBlogModdelPruneLinks)
 
     def UpdateFunction(self,feed):
         """Returns a callback to map for clustering and recommendations"""
@@ -185,30 +202,25 @@ class EmilyBlogModel(object):
                                        date=item.published,
                                        title=item.title,
                                        blogtitle=feed.title,
+                                       blogurl=self.url,
                                        summary=item.summary)
                    for item in feed.entries]
         for item in feedlinks:
-            item.put_async()
-        OldThreshold=EmilyBlogModel.Threshold
+            yield item.put_async()
         @ndb.tasklet
-        def Updater(blogmodel):
+        def Updater(Link):
             """Calculates similarity with other blog, and decides whether to link"""
-            x=self.Similarity(blogmodel.blog)
-            IsOldThreshold=blogmodel.blog.best==OldThreshold
-            if x>self.best or x>other.blogmodel.best or x>EmilyBlogModelThreshold:
-                link=EmilyLink(blogs=[self.url,other.blogmodel.url],strength=x)
-                link.put()
-            if x>self.best:
-                self.best=x
-            if x>blogmodel.blog.best:
-                blogmodel.blog.best=x
-                if x<EmilyBlogModel.Threshold or IsOldThreshold:
-                    EmilyBlogModel.Threshold=x
-            if x>=EmilyBlogModel.Threshold:
-                for item in feed:
-                    blogmodel.blog.Recommend(item.link)
-            blogmodel.put_async()
-            if self.best<EmilyBlogModel.Threshold
+            other_url=[url for url in Link.blogs if url!=self.url][0]
+            other_blog=EmilyBlogModelAppEngineWrapper.query(url==other_url).get()
+            x=other_blog.blog.Similarity(self)
+            if x>Link.strength:
+                for item in feedlinks:
+                    other_blog.blog.Recommend(item.permalink)
+                yield other_blog.put_async()
+                other_blog.blog.Notify()
+            Link.strength=x
+            yield Link.put_async()
+            #if self.best<EmilyBlogModel.Threshold
         return Updater
 
     def GrowTree(self):
@@ -216,30 +228,49 @@ class EmilyBlogModel(object):
            between the words in the blog"""
         Similarities=[]
         for word in self.words:
-            node={'node':self.words[word],
-                  'score':0}
-            for (i,node2) in enumerate(Similarities):
-                Sim=node['node'].Similarity(node2['node'])
-                if Sim>node['score']:
-                    node['score']=Sim
-                if Sim>node2['score']:
-                    Similarities[i]['score']=Sim
-            Similarities.append(node)
+            if len(self.words[word].sentences)>1:
+                node={'node':self.words[word],
+                      'score':float('-inf'),
+                      'neighbour':None}
+                for (i,node2) in enumerate(Similarities):
+                    Sim=node['node'].Entropy(node2['node'])
+                    if Sim>node['score']:
+                        node['score']=Sim
+                        node['neighbour']=node2['node']
+                    if Sim>node2['score']:
+                        Similarities[i]['score']=Sim
+                        Similarities[i]['neighbour']=node['node']
+                Similarities.append(node)
         while len(Similarities)>1:
-            Similarities.sort(lambda x:x['score'])
+            old=len(Similarities)
+            Similarities.sort(key=lambda x:x['score'])
             a=Similarities.pop()
-            b=Similarities.pop()
-            node={'node':a['node']+b['node'],
-                  'score':0}
-            for (i,node2) in enumerate(Similarities):
-                Sim=node['node'].Similarity(node2['node'])
-                if Sim>node['score']:
-                    node['score']=Sim
-                if Sim>node2['score']:
-                    Similarites[i]['score']=Sim
-            Similarities.append(node)
-        self.Tree=Similarities[0]
-        self.H=self.Tree.TotalEntropy()
+            node={'node':a['node']+a['neighbour'],
+                  'score':float('-inf'),
+                  'neighbour':None}
+            affected=[{'node':x['node'],
+                       'score':float('-inf'),
+                       'neighbour':None} for x in Similarities
+                      if x['node']!=a['neighbour'] and (x['neighbour']==a['node']
+                                                        or x['neighbour']==a['neighbour'])]
+            Similarities=[x for x in Similarities
+                          if x['node']!=a['neighbour']
+                          and x['neighbour']!=a['node']
+                          and x['neighbour']!=a['neighbour']]
+            affected.append(node)
+            for node in affected:         
+                for (i,node2) in enumerate(Similarities):
+                    Sim=node['node'].Entropy(node2['node'])
+                    if Sim>node['score']:
+                        node['score']=Sim
+                        node['neighbour']=node2['node']
+                    if Sim>node2['score'] or node2['neighbour']==a['node'] or node2['neighbour']==a['neighbour']:
+                        Similarities[i]['score']=Sim
+                        Similarities[i]['neighbour']=node['node']
+                Similarities.append(node)
+            assert len(Similarities)<old
+        self.Tree=Similarities[0]['node']
+        self.H=self.Tree.TotalEntropy
 
     def WordGraph(self):
         """Returns the most significant words in the blog in a format suitable
@@ -264,23 +295,47 @@ class EmilyBlogModel(object):
         """Returns the entropy associated with the deepest node in the tree that
            contains all words"""
         return self.Tree.search(words)
+
+    def WordCloud(self):
+        """Returns a wordcloud as SVG"""
+        
+        cloud,size=self.Tree.NodePositions()
+        svg=svgwrite.Drawing(size=size)
+        svg.add(cloud)
+        return svg.tostring()
+
+    def Notify(self):
+        """Notifies a pubsubhubbub hub when the blog's recommendations
+           have been updated"""
+        data={'hub.mode':'publish',
+              'hub.url':'https://emily-founc-a-thing.appspot.com/recommend?url={}'.format(urllib.quote_plus(self.url))}
+        urllib2.urlopen('https://pubsubhubbub.appspot.com',urllib.urlencode(data))
+        
         
 
     def Recommend(self,permalink):
         """Add a recommendation for this blog"""
         self.recommendations.appendleft(permalink)
 
-    @ndb.tasklet
-    @classmethod
-    def PruneLinks(cls):
-        """Removes weak links"""
-        EmilyLink.query(EmilyLink.strength<EmilyBlogModel.Threshold).delete_async()
+##    @ndb.tasklet
+##    @classmethod
+##    def PruneLinks(cls):
+##        """Removes weak links"""
+##        EmilyLink.query(EmilyLink.strength<EmilyBlogModel.Threshold).delete_async()
                                        
 
-    
-                           
+##class EmilyCluster(ndb.model):
+##    """Represents a group of similar blogs"""
+##     blogs=ndb.StringProperty(repeated=True)
+##     graph=ndb.PickleProperty()
+
+     #@ndb.tasklet
+     #def FindBestMatch(self,blog):
         
-                    
+if __name__=="__main__":
+    emily=EmilyBlogModel("http://fantasticaldevices.blogspot.com")
+    with codecs.open("fantasticaldevices.svg",'w','utf-8') as svg:
+        svg.write(emily.WordCloud())
                 
 
     

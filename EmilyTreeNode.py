@@ -1,4 +1,7 @@
 import math
+import svgwrite
+import svgwrite.container
+import random
 
 class EmilyTreeNode(object):
     """Represents a word or set of words in a tree-based model of the
@@ -15,6 +18,15 @@ class EmilyTreeNode(object):
         self.Parent=None
         self.Denom=math.log((N+1),2)
         self.N=N
+        self.TotalEntropy=0.0
+
+##    def __eq__(self,other):
+##        """self==other"""
+##        return self.words==other.words
+##
+##    def __ne__(self,other):
+##        """self!=other"""
+##        return self.words!=other.words
 
     def Update(self,NewSentences,deltaN):
         """Adds data about the occurrence of the word represented by the node
@@ -46,21 +58,21 @@ class EmilyTreeNode(object):
     def Tanimoto(self,other):
         """Tanimoto metric between self.words and other.words
            size of intersection/size of union"""
-    return float(len(self.words & other.words))/len(self.word |other.words)
+        return float(len(self.words & other.words))/len(self.word |other.words)
 
     def Similarity(self,other):
         """Entropy weighted similarity of the environments in which words
            represented by self and other occur"""
         return (self.Parent.H+other.Parent.H)*self.Parent.Tanimoto(other.Parent)
 
-    def TotalEntropy(self):
-        """Total entropy of the words represented by self"""
-        result=0
-        if self.Left:
-            result=self.Left.TotalEntropy()+self.Right.TotalEntropy()
-        else:
-            result=self.parent.H
-        return result
+##    def TotalEntropy(self):
+##        """Total entropy of the words represented by self"""
+##        result=0
+##        if self.Left:
+##            result=self.Left.TotalEntropy()+self.Right.TotalEntropy()
+##        else:
+##            result=self.Parent.H
+##        return result
 
     def LinkEntropy(self,word1,word2):
         """The entropy of the deepest node in the tree that contains both words.
@@ -76,7 +88,8 @@ class EmilyTreeNode(object):
         """The entropy of the deepest node in the tree that contains all words.
            Used for search"""
         result=0
-        if words<=self.words:
+        if self.Left is not None and all([word in self.words
+                                          for word in words]):
             result=max((self.H,self.Left.Search(words),self.Right.Search(words)))
         return result
 
@@ -85,11 +98,15 @@ class EmilyTreeNode(object):
            sets of words represented by the two nodes.
            Contains the two original nodes as children"""
         result=EmilyTreeNode(self.words | other.words,
-                             self.sentences |other.sentences),
+                             self.sentences |other.sentences,
                              self.N)
         result.H=self.Entropy(other)
         result.Left=self
         result.Right=other
+        if result.Left.H is None:
+            result.TotalEntropy=result.H
+        else:
+            result.TotalEntropy=result.Left.TotalEntropy+result.Right.TotalEntropy
         self.Parent=result
         other.Parent=result
         return result
@@ -105,7 +122,7 @@ class EmilyTreeNode(object):
 
     def __iter__(self):
         """iterate over the terminal nodes of the tree"""
-        if self.Left==None:
+        if self.Left is None:
            yield self
         else:
             for Leaf in self.Left:
@@ -125,6 +142,34 @@ class EmilyTreeNode(object):
                 raise KeyError(word)
         return result
 
-                
+    def NodePositions(self,vertical=False,pointsize=0.0):
+        """Calculates positions of words for displaying as a word cloud"""
+        result=None
+        width=0
+        height=0
+        if self.Left is None and self.Right is None:
+            word=list(self.words)[0]
+            height=pointsize
+            width=len(word)*pointsize/2
+            result=svgwrite.text.Text(word,
+                                      stroke=random.choice(('red','blue','black','purple')),
+                                      font_size=pointsize)
+        else:
+            size=pointsize+self.H
+            lResult,(lwidth,lheight)=self.Left.NodePositions(not vertical,size)
+            rResult,(rwidth,rheight)=self.Right.NodePositions(not vertical,size)
+            if vertical:
+                width=max(lwidth,rwidth)
+                height=lheight+rheight
+                rResult.translate(0,lheight)
+            else:
+                width=lwidth+rwidth
+                height=max(lheight,rheight)
+                rResult.translate(lwidth,0)
+            result=svgwrite.container.Group()
+            result.add(lResult)
+            result.add(rResult)
+        return result,(width,height)
+                           
     
      
