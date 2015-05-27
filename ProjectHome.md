@@ -1,0 +1,1 @@
+Emily discovers semantic patterns in the vocabulary of a blog and uses them to visualise the blog and recommend similar ones.
